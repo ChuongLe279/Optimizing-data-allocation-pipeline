@@ -17,7 +17,30 @@ class BregmanProximalGradient(): # BPG
         self.iterations_num = iterations_num
     
     def run(self) -> np.ndarray:
-        return np.array([])
+        rng = np.random.default_rng()
+        N = self.W.shape[0] # type: ignore
+        K = self.partitions_num
+        X = (1 / K) * np.ones((N, K)) + 0.1 * rng.random((N,K))
+
+        # Chuẩn hóa X theo dòng
+        X = X / X.sum(axis=1, keepdims=True)
+
+        for t in range(self.iterations_num - 1):
+            G = np.empty_like(X)
+
+            for i in range(K):
+                # Công thức đạo hàm
+                A = (X[:, i] @ (self.W @ np.ones(N))) * (self.W @ np.ones(N) - 2 * (self.W @ X[:, i]))
+                B = (X[:, i] @ (self.W @ (np.ones(N) - X[:, i]))) * (self.W @ np.ones(N))
+                C = (X[:, i] @ (self.W @ np.ones(N))) ** 2
+                g = (A - B) / C
+
+                G[:, i] = g
+
+            Y = X * np.exp(-self.step_size * G)
+            X = Y / Y.sum(axis = 1, keepdims = True)
+
+        return np.argmax(X, axis=1) + 1
 
 class PartitioningUnbalancedGraph(): # Algorithm 3
     def __init__(self, heat_graph: nx.Graph, partition_scheme: PartitionScheme, site_num: int):
