@@ -43,12 +43,46 @@ class BregmanProximalGradient(): # BPG
         return np.argmax(X, axis=1) + 1
 
 class PartitioningUnbalancedGraph(): # Algorithm 3
-    def __init__(self, partition_scheme: PartitionScheme, site_num: int):
+    def __init__(self, partition_scheme: PartitionScheme, site_num: int, workload_factor: float):
         self.partition_scheme = partition_scheme
         self.site_num = site_num
+        self.workload_factor = workload_factor
+
+    def getLoads(self, partition_scheme: PartitionScheme) -> dict[int, float]:
+        return {
+            pid: sum(
+                partition_scheme.heat_graph.nodes[v]["weight"]
+                for v in vertices
+            )
+            for pid, vertices in partition_scheme.partitions.items()
+        }
 
     def run(self) -> PartitionScheme:
-        return self.partition_scheme
+        current_scheme = self.partition_scheme
+        G = copy.deepcopy(current_scheme)
+
+        loads = self.getLoads(G)
+        # Partition có tổng workload thấp nhất
+        underloadedPartition = min(loads, key=loads.__getitem__)
+        # Partition có tổng workload cao nhất
+        overloadedPartition = max(loads, key=loads.__getitem__)
+        avgWorkload = sum(loads.values()) / len(G.partitions)
+
+        while(underloadedPartition <= (1 + self.workload_factor) * avgWorkload):
+            """
+            Chọn một vertex phù hợp để di chuyển từ partition có workload cao 
+            nhất sang thấp nhất.
+            """
+
+        
+        loads = self.getLoads(G)
+        underloadedPartition = min(loads, key=loads.__getitem__)
+        overloadedPartition = max(loads, key=loads.__getitem__)
+
+        if (overloadedPartition > (1 + self.workload_factor) or underloadedPartition < (1-self.workload_factor) * avgWorkload):
+            G = PartitioningUnbalancedGraph(G, self.site_num, self.workload_factor).run()
+
+        return G
 
 class PartitioningMinimumCutGraph(): # Algorithm 4
     def __init__(self, partition_scheme: PartitionScheme, site_num: int, depth_search: int = 2):
@@ -101,14 +135,17 @@ class Partitioning(): # Algorithm 2
         loads = self.getLoads(G)
         minPartition = min(loads)
         maxPartition = max(loads)
-        sumLoads = sum(loads)
-        avgWorkload = sumLoads / len(self.partition_scheme.partitions)
+        avgWorkload = sum(loads) / len(self.partition_scheme.partitions)
 
         if (maxPartition > (1 + self.workload_factor) * avgWorkload) or (minPartition < (1 - self.workload_factor) * avgWorkload):
-            G = PartitioningUnbalancedGraph(G, self.site_num).run()
-        
+            G = PartitioningUnbalancedGraph(G, self.site_num, self.workload_factor).run()
+
+        """
+        Tổng trọng số weight của tất cả các cạnh nối giữa 2
+        partition khác nhau trong Heat Graph.
+        """
         criticalEdgesLoad = self.getCriticalEdgesLoad(G)
-        if criticalEdgesLoad > self.distributed_percentage * sumLoads:
+        if criticalEdgesLoad > self.distributed_percentage * sum(loads):
             G = PartitioningMinimumCutGraph(G, self.site_num).run()
 
         if len(G.partitions) == 1:
