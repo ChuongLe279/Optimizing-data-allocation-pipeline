@@ -178,36 +178,66 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
                 (3, 8, 4)
             ]
         """
-        return []
+        vertex_partitions = {
+            v: pid 
+            for pid, vertices in partition_scheme.partitions.items()
+            for v in vertices
+        }
+        critical_edges = []
+
+        for u, v, data in partition_scheme.heat_graph.edges(data=True):
+            if vertex_partitions[u] != vertex_partitions[v]:
+                critical_edges.append((u, v, float(data["weight"])))
+
+        return critical_edges
 
     def hottestEdge(self, criticalEdges: list[tuple[int, int, float]]) -> tuple[int, int, float]:
-        """Chỉ trả về một cạnh duy nhất."""
-        raise NotImplementedError()
+        """Chỉ trả về một cạnh có weight lớn nhất duy nhất."""
+        return max(criticalEdges, key=lambda edge: edge[2]) # (u, v, w) -> trả cạnh có w lớn nhất
 
-    def explorePossibility(self) -> float:
+    def explorePossibility(self, partition_scheme: PartitionScheme, vertex: int, target_partition: int) -> float:
+        """
+        Đánh giá di chuyển.
+        vertex: ID vertex cần chuyển.
+        target_partition: ID partition đích.
+        """
         raise NotImplementedError()
 
     def explorePossibilititesReplication(self) -> PartitionScheme:
         raise NotImplementedError()
 
-    def migrateTuple(self) -> PartitionScheme:
-        raise NotImplementedError()
+    def migrateTuple(self, partition_scheme: PartitionScheme, vertex: int, origin_partition: int,target_partition: int) -> PartitionScheme:
+        partition_scheme.partitions[origin_partition].remove(vertex)
+        partition_scheme.partitions[target_partition].add(vertex)
+
+        return partition_scheme
 
     def run(self) -> PartitionScheme:
         criticalEdges = self.criticalEdges(self.partition_scheme)
         for ce in criticalEdges:
             ce = self.hottestEdge(criticalEdges)
-            chargeTestOrigin = self.explorePossibility()
-            chargeTestTarget =  self.explorePossibility()
+            u, v, weight = ce
+
+            origin_partition = next(
+                pid for pid, vertices in self.partition_scheme.partitions.items()
+                if u in vertices
+            )
+            target_partition = next(
+                pid for pid, vertices in self.partition_scheme.partitions.items()
+                if v in vertices
+            )
+
+            chargeTestOrigin = self.explorePossibility(self.partition_scheme, u, target_partition)
+            chargeTestTarget =  self.explorePossibility(self.partition_scheme, v, origin_partition)
 
             if chargeTestOrigin < 0 and chargeTestTarget < 0:
                 G = self.explorePossibilititesReplication()
 
             if chargeTestOrigin > chargeTestTarget and chargeTestTarget >= 0:
-                G = self.migrateTuple()
+                G = self.migrateTuple(self.partition_scheme, v, origin_partition, target_partition)   
             else:
                 if chargeTestOrigin >= 0:
-                    G = self.migrateTuple()
+                    G = self.migrateTuple(self.partition_scheme, u, origin_partition, target_partition)
                 else:
                     G = self.partition_scheme
 
