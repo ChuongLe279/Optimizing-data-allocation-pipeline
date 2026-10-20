@@ -57,6 +57,69 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
             for pid, vertices in partition_scheme.partitions.items()
         }
 
+    def mostProeminentTuple(self, partition_scheme: PartitionScheme, overloadedPartition: int):
+        """
+        Tiêu chí vertex:
+            - weight cao nhất
+            - weighted degree thấp nhất
+
+        Chọn ra các partition có workload lớn nhất nhưng số kết nối
+        cạnh của nó nhỏ nhất. Đỡ tốn chi phí di chuyển.
+        """
+
+        graph = partition_scheme.heat_graph
+        vertices = partition_scheme.partitions[overloadedPartition]
+
+        candidate = None
+        maxWeight = -1
+        minDegree = float("inf")
+
+        for v in vertices:
+            weight = graph.nodes[v]["weight"]
+            degree = graph.degree(v, weight="weight")
+
+            if weight > maxWeight or (weight == maxWeight and degree < minDegree):
+                candidate = v
+                maxWeight = weight
+                minDegree = degree
+
+        # key
+        return candidate
+
+    def relocateTuple(self, partition_scheme: PartitionScheme, proeminent_tuple: int, underloadPartition: int, overloadPartition: int):
+        """
+        Thực hiện các bước sau:
+            Chuyển proeminent_tuple sang underloadPartition.
+            Di chuyển hàng xóm lân cận đi theo (di chuyển cả nhóm).
+            Giới hạn độ tìm kiếm = 2 bước nhảy.
+
+        """
+        loads = self.getLoads(partition_scheme)
+        avgWorkload = sum(loads.values()) / len(partition_scheme.partitions)
+
+        maxLoad = (1 + self.workload_factor) * avgWorkload
+        vertexWeight = partition_scheme.heat_graph.nodes[proeminent_tuple]["weight"]
+
+        """
+        Kiểm tra workload của partition đích sau khi nhận vertex.
+        Nếu vượt quá maxload thì sẽ không di chuyển
+        """
+        if loads[underloadPartition] + vertexWeight > maxLoad:
+            return False
+
+        # Chuyển proeminent_tuple sang underloadPartition.
+        partition_scheme.partitions[overloadPartition].remove(proeminent_tuple)
+        partition_scheme.partitions[underloadPartition].add(proeminent_tuple)
+
+        """
+        TODO: Áp dụng hai bước dưới đây sẽ tối ưu thuật toán hơn. Nhưng vì
+        bài báo không nhắc đến phương pháp cụ thể, áp dụng vào thì sẽ gây ra phức tạp không 
+        cần thiết.
+        """
+        # Di chuyển hàng xóm lân cận đi theo (di chuyển cả nhóm).
+        # Giới hạn độ tìm kiếm = 2 bước nhảy.
+        return True
+
     def run(self) -> PartitionScheme:
         current_scheme = self.partition_scheme
         G = copy.deepcopy(current_scheme)
@@ -68,18 +131,31 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
         overloadedPartition = max(loads, key=loads.__getitem__)
         avgWorkload = sum(loads.values()) / len(G.partitions)
 
-        while(underloadedPartition <= (1 + self.workload_factor) * avgWorkload):
+        n = ()
+        while loads[overloadedPartition] > (1 + self.workload_factor) * avgWorkload:
             """
             Chọn một vertex phù hợp để di chuyển từ partition có workload cao 
             nhất sang thấp nhất.
             """
+            n = self.mostProeminentTuple(G, overloadedPartition)
+            if n is None:
+                break
 
-        
+            relocate_bool = self.relocateTuple(G, n, underloadedPartition, overloadedPartition)
+            if not relocate_bool:
+                break
+
+            loads = self.getLoads(G)
+            underloadedPartition = min(loads, key=loads.__getitem__)
+            overloadedPartition = max(loads, key=loads.__getitem__)
+            avgWorkload = sum(loads.values()) / len(G.partitions)
+
         loads = self.getLoads(G)
+        # Key
         underloadedPartition = min(loads, key=loads.__getitem__)
         overloadedPartition = max(loads, key=loads.__getitem__)
 
-        if (overloadedPartition > (1 + self.workload_factor) or underloadedPartition < (1-self.workload_factor) * avgWorkload):
+        if (loads[overloadedPartition] > (1 + self.workload_factor) * avgWorkload or loads[underloadedPartition] < (1-self.workload_factor) * avgWorkload):
             G = PartitioningUnbalancedGraph(G, self.site_num, self.workload_factor).run()
 
         return G
