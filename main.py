@@ -161,13 +161,57 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
         return G
 
 class PartitioningMinimumCutGraph(): # Algorithm 4
+    """
+    Giảm giao dịch phân tán.
+    """
     def __init__(self, partition_scheme: PartitionScheme, site_num: int, depth_search: int = 2):
         self.partition_scheme = partition_scheme
         self.site_num = site_num
         self.depth_search = depth_search
 
+    def criticalEdges(self, partition_scheme: PartitionScheme) -> list[tuple[int, int, float]]:
+        """Trả về danh sách các cạnh nối giữa hai partition khác nhau.
+        return (u, v, weight)
+        VD: critical_edges = [
+                (1, 5, 10),
+                (2, 6, 7),
+                (3, 8, 4)
+            ]
+        """
+        return []
+
+    def hottestEdge(self, criticalEdges: list[tuple[int, int, float]]) -> tuple[int, int, float]:
+        """Chỉ trả về một cạnh duy nhất."""
+        raise NotImplementedError()
+
+    def explorePossibility(self) -> float:
+        raise NotImplementedError()
+
+    def explorePossibilititesReplication(self) -> PartitionScheme:
+        raise NotImplementedError()
+
+    def migrateTuple(self) -> PartitionScheme:
+        raise NotImplementedError()
+
     def run(self) -> PartitionScheme:
-        return self.partition_scheme
+        criticalEdges = self.criticalEdges(self.partition_scheme)
+        for ce in criticalEdges:
+            ce = self.hottestEdge(criticalEdges)
+            chargeTestOrigin = self.explorePossibility()
+            chargeTestTarget =  self.explorePossibility()
+
+            if chargeTestOrigin < 0 and chargeTestTarget < 0:
+                G = self.explorePossibilititesReplication()
+
+            if chargeTestOrigin > chargeTestTarget and chargeTestTarget >= 0:
+                G = self.migrateTuple()
+            else:
+                if chargeTestOrigin >= 0:
+                    G = self.migrateTuple()
+                else:
+                    G = self.partition_scheme
+
+        return G # type: ignore
 
 class FirstPartitioning(): # Algorithm 5
     def __init__(self, partition_scheme: PartitionScheme, site_num: int):
