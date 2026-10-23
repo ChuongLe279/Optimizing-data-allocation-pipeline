@@ -171,7 +171,8 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
         self.depth_search = depth_search
 
     def criticalEdges(self, partition_scheme: PartitionScheme) -> list[tuple[int, int, float]]:
-        """Trả về danh sách các cạnh nối giữa hai partition khác nhau.
+        """
+        Trả về danh sách các cạnh nối giữa hai partition khác nhau.
         return (u, v, weight)
         VD: critical_edges = [
                 (1, 5, 10),
@@ -198,11 +199,21 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
 
     def explorePossibility(self, partition_scheme: PartitionScheme, vertex: int, target_partition: int) -> float:
         """
-        Đánh giá di chuyển.
-        vertex: ID vertex cần chuyển.
-        target_partition: ID partition đích.
+        Đầu vào:
+            vertex: ID vertex cần chuyển.
+            target_partition: ID partition đích.
+
+        Đầu ra:
+            Cạnh nhỏ nhất sau khi di chuyển vertex.
+
+        Các bước làm:
+            Di chuyển thử vertex vào target partition (tối đa 2 hops).
+            Kiểm tra có vi phạm phương trình 1 (Kiểm soát cân bằng tải giữa partition).
+            Tính cạnh nhỏ nhất.
+            Lặp lại đến khi tìm được cạnh nhỏ nhất.
         """
-        raise NotImplementedError()
+        
+        return 0.0
 
     def explorePossibilititesReplication(self) -> PartitionScheme:
         raise NotImplementedError()
