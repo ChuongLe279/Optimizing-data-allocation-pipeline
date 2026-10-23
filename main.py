@@ -180,15 +180,21 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
                 (3, 8, 4)
             ]
         """
-        vertex_partitions = {
-            v: pid 
-            for pid, vertices in partition_scheme.partitions.items()
-            for v in vertices
-        }
+        vertex_partitions = {}
+
+        for pid, vertices in partition_scheme.partitions.items():
+            for vertex in vertices:
+                if vertex not in vertex_partitions:
+                    vertex_partitions[vertex] = set()
+
+                vertex_partitions[vertex].add(pid)
+
         critical_edges = []
 
         for u, v, data in partition_scheme.heat_graph.edges(data=True):
-            if vertex_partitions[u] != vertex_partitions[v]:
+            common_partitions = vertex_partitions[u] & vertex_partitions[v]
+
+            if not common_partitions:
                 critical_edges.append((u, v, float(data["weight"])))
 
         return critical_edges
@@ -289,10 +295,67 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
             cut = self.calculateMinimumCut(trial_scheme)
             minimal_cut = min(cut, minimal_cut)
 
-        return minimal_cut
+        # Nếu ko có trường hợp nào hợp lệ thì trả về -1
+        return min(minimal_cut, -1)
 
-    def explorePossibilititesReplication(self) -> PartitionScheme:
-        raise NotImplementedError()
+    
+    def checkMinPartition(self, original_scheme: PartitionScheme, new_scheme: PartitionScheme) -> bool:
+        """Kiểm tra phương án mới có giảm tổng trọng số cạnh cắt không. (đây là equation 2)"""
+        original_cut = self.calculateMinimumCut(original_scheme)
+        new_cut = self.calculateMinimumCut(new_scheme)
+        return new_cut < original_cut
+
+    def createReplication(self, partition_scheme: PartitionScheme, vertex: int, target_partition: int):
+        """Thêm vertex vào partition đích, giữ nguyên bản gốc."""
+        partition_scheme.partitions[target_partition].add(vertex)
+        return partition_scheme
+
+    def explorePossibilititesReplication(self, partition_scheme: PartitionScheme, vertex_one: int, vertex_two: int, partition_one: int, partition_two: int) -> PartitionScheme:
+        """
+        Tạo bản sao dữ liệu nếu hàm explorePossibility không hợp lệ (trả về -1).
+
+        TODO: Tạo bản sao cả node hàng xóm. Quá khó nên h ko làm đâu.
+
+        Đầu vào:
+            vertex_one thuộc partition_one.
+            vertex_two thuộc partition_two.
+
+        Bước làm:
+            Tạo bảng sao vertex_one ở partition_two.
+                Kiểm tra thỏa phương trình 1 và 2.
+                Nếu thỏa, trả về partition_scheme và dừng.
+            Tạo bảng sao vertex_one ở partition_two.
+                Kiểm tra thỏa phương trình 1 và 2.
+                Nếu thỏa, trả về partition_scheme và dừng.
+
+        Note:
+            Hàm kiểm tra equation 1: checkBalance
+            Hàm kiểm tra equation 2: checkMinPartition
+        """
+        candidates = [
+            (vertex_one, partition_two),
+            (vertex_two, partition_one)
+        ]
+
+        for vertex, target_partition in candidates:
+            trial_scheme = copy.deepcopy(partition_scheme)
+
+            self.createReplication(
+                trial_scheme,
+                vertex,
+                target_partition
+            )
+
+            if not self.checkBalance(trial_scheme):
+                continue
+
+            if not self.checkMinPartition(partition_scheme, trial_scheme):
+                continue
+
+            return trial_scheme
+
+        # Không tìm được phương án hợp lệ
+        return partition_scheme
 
 
     def run(self) -> PartitionScheme:
@@ -314,7 +377,7 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
             chargeTestTarget =  self.explorePossibility(self.partition_scheme, v, origin_partition, origin_partition)
 
             if chargeTestOrigin < 0 and chargeTestTarget < 0:
-                G = self.explorePossibilititesReplication()
+                G = self.explorePossibilititesReplication(self.partition_scheme, u, v, origin_partition, target_partition)
 
             if chargeTestOrigin > chargeTestTarget and chargeTestTarget >= 0:
                 G = self.migrateTuple(self.partition_scheme, [v], origin_partition, target_partition)   
