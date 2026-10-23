@@ -115,7 +115,7 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
         """
         TODO: Áp dụng hai bước dưới đây sẽ tối ưu thuật toán hơn. Nhưng vì
         bài báo không nhắc đến phương pháp cụ thể, áp dụng vào thì sẽ gây ra phức tạp không 
-        cần thiết.
+        cần thiết. **Nchung là t ko biết làm.
         """
         # Di chuyển hàng xóm lân cận đi theo (di chuyển cả nhóm).
         # Giới hạn độ tìm kiếm = 2 bước nhảy.
@@ -165,9 +165,9 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
     """
     Giảm giao dịch phân tán.
     """
-    def __init__(self, partition_scheme: PartitionScheme, site_num: int, depth_search: int = 2):
+    def __init__(self, partition_scheme: PartitionScheme, workload_factor: float, depth_search: int = 2):
         self.partition_scheme = partition_scheme
-        self.site_num = site_num
+        self.workload_factor = workload_factor
         self.depth_search = depth_search
 
     def criticalEdges(self, partition_scheme: PartitionScheme) -> list[tuple[int, int, float]]:
@@ -196,11 +196,60 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
     def hottestEdge(self, criticalEdges: list[tuple[int, int, float]]) -> tuple[int, int, float]:
         """Chỉ trả về một cạnh có weight lớn nhất duy nhất."""
         return max(criticalEdges, key=lambda edge: edge[2]) # (u, v, w) -> trả cạnh có w lớn nhất
+    
+    def migrateTuple(self, partition_scheme: PartitionScheme, vertices: list[int], origin_partition: int, target_partition: int) -> PartitionScheme:
+        for vertex in vertices:
+            partition_scheme.partitions[origin_partition].remove(vertex)
+            partition_scheme.partitions[target_partition].add(vertex)
+        return partition_scheme
 
-    def explorePossibility(self, partition_scheme: PartitionScheme, vertex: int, target_partition: int) -> float:
+    def checkBalance(self, partition_scheme: PartitionScheme) -> bool:
+        """
+        Kiểm tra Equation 1:
+        load(partition) <= (1 + alpha) * average_load
+        với mọi partition.
+        """
+        graph = partition_scheme.heat_graph
+        partitions = partition_scheme.partitions
+        k = len(partitions)
+
+        if k == 0:
+            return False
+
+        # Tổng tải của tất cả đỉnh trong đồ thị
+        total_load = sum(
+            graph.nodes[v]["weight"]
+            for v in graph.nodes
+        )
+
+        average_load = total_load / k
+        upper_bound = (1 + self.workload_factor) * average_load
+
+        for vertices in partitions.values():
+            partition_load = sum(
+                graph.nodes[v]["weight"]
+                for v in vertices
+            )
+
+            if partition_load > upper_bound:
+                return False
+
+        return True
+
+    def calculateMinimumCut(self, partition_scheme: PartitionScheme) -> float:
+        """Trả về tổng trọng số các cạnh nối giữa các partition."""
+        critical_edges = self.criticalEdges(partition_scheme)
+        total_weight = 0.0
+
+        for u, v, weight in critical_edges:
+            total_weight += weight
+
+        return total_weight
+
+    def explorePossibility(self, partition_scheme: PartitionScheme, vertex: int, origin_partition: int, target_partition: int) -> float:
         """
         Đầu vào:
-            vertex: ID vertex cần chuyển.
+            vertex: ID đỉnh cần chuyển.
             target_partition: ID partition đích.
 
         Đầu ra:
@@ -212,17 +261,39 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
             Tính cạnh nhỏ nhất.
             Lặp lại đến khi tìm được cạnh nhỏ nhất.
         """
+
+        minimal_cut = float('inf') # Cạnh nhỏ nhất sau khi di chuyển vertex.
+        heat_graph = partition_scheme.heat_graph
         
-        return 0.0
+        # Các đỉnh cách vertex đúng 1 cạnh
+        one_hop = set(heat_graph.neighbors(vertex)) - {vertex}
+        # Các đỉnh cách vertex đúng 2 cạnh
+        two_hops = set()
+        for neighbor in one_hop:
+            for next_neighbor in heat_graph.neighbors(neighbor):
+                if next_neighbor != vertex and next_neighbor not in one_hop:
+                    two_hops.add((vertex, neighbor, next_neighbor))
+
+        trial_scheme = copy.deepcopy(partition_scheme)
+
+        # Chuyển các đỉnh trong phương án sang target_partition
+        for partition_pair in two_hops:
+            vertices = list(partition_pair)
+            trial_scheme = self.migrateTuple(partition_scheme, vertices, origin_partition, target_partition)
+
+            # Kiểm tra cân bằng tải của trial_scheme
+            if not self.checkBalance(trial_scheme):
+                break
+
+            # Nếu hợp lệ, tính tổng trọng số cạnh cắt rồi so sánh với kết quả tốt nhất
+            cut = self.calculateMinimumCut(trial_scheme)
+            minimal_cut = min(cut, minimal_cut)
+
+        return minimal_cut
 
     def explorePossibilititesReplication(self) -> PartitionScheme:
         raise NotImplementedError()
 
-    def migrateTuple(self, partition_scheme: PartitionScheme, vertex: int, origin_partition: int,target_partition: int) -> PartitionScheme:
-        partition_scheme.partitions[origin_partition].remove(vertex)
-        partition_scheme.partitions[target_partition].add(vertex)
-             
-        return partition_scheme
 
     def run(self) -> PartitionScheme:
         criticalEdges = self.criticalEdges(self.partition_scheme)
@@ -239,17 +310,17 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
                 if v in vertices
             )
 
-            chargeTestOrigin = self.explorePossibility(self.partition_scheme, u, target_partition)
-            chargeTestTarget =  self.explorePossibility(self.partition_scheme, v, origin_partition)
+            chargeTestOrigin = self.explorePossibility(self.partition_scheme, u, origin_partition, target_partition)
+            chargeTestTarget =  self.explorePossibility(self.partition_scheme, v, origin_partition, origin_partition)
 
             if chargeTestOrigin < 0 and chargeTestTarget < 0:
                 G = self.explorePossibilititesReplication()
 
             if chargeTestOrigin > chargeTestTarget and chargeTestTarget >= 0:
-                G = self.migrateTuple(self.partition_scheme, v, origin_partition, target_partition)   
+                G = self.migrateTuple(self.partition_scheme, [v], origin_partition, target_partition)   
             else:
                 if chargeTestOrigin >= 0:
-                    G = self.migrateTuple(self.partition_scheme, u, origin_partition, target_partition)
+                    G = self.migrateTuple(self.partition_scheme, [u], origin_partition, target_partition)
                 else:
                     G = self.partition_scheme
 
@@ -258,9 +329,94 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
 class FirstPartitioning(): # Algorithm 5
     def __init__(self, partition_scheme: PartitionScheme, site_num: int):
         self.partition_scheme = partition_scheme
+        self.heat_graph = partition_scheme.heat_graph
         self.site_num = site_num
 
+    # coarsening graph: Gom cụm các đỉnh projection nối nhau bằng cạnh trọng số 0 (thuộc cùng một tuple) thành một đỉnh đại diện với tổng trọng số nhiệt
+    # gom cụm các đỉnh thành 1 tập duy nhất, lúc này chỉ cần quản lí theo từng tập, nhiệt của mỗi tập mới bằng tổng nhiệt của các đỉnh cộng lại
+    def _coarsening_graph(self) -> tuple[nx.Graph, dict[int, list[int]], dict[int, int]]:
+        zero_graph = nx.Graph()
+        zero_graph.add_nodes_from(self.heat_graph.nodes(data=True))
+        for u, v, d in self.heat_graph.edges(data=True):
+            if float(d.get('weight', 0.0)) == 0.0:
+                zero_graph.add_edge(u, v)
+
+        coarse_g = nx.Graph()
+        node_to_coarse: dict[int, int] = {}
+        coarse_to_nodes: dict[int, list[int]] = {}
+
+        for c_idx, comp in enumerate(nx.connected_components(zero_graph)):
+            members = list(comp)
+            coarse_to_nodes[c_idx] = members
+            total_w = sum(float(self.heat_graph.nodes[n].get('weight', 1.0)) for n in members)
+            coarse_g.add_node(c_idx, weight=total_w)
+            for n in members:
+                node_to_coarse[n] = c_idx
+
+        for u, v, d in self.heat_graph.edges(data=True):
+            w = float(d.get('weight', 0.0))
+            if w > 0.0:
+                cu, cv = node_to_coarse[u], node_to_coarse[v]
+                if cu != cv:
+                    cur_w = float(coarse_g.get_edge_data(cu, cv, {}).get('weight', 0.0))
+                    coarse_g.add_edge(cu, cv, weight=cur_w + w)
+
+        return coarse_g, coarse_to_nodes, node_to_coarse
+
     def run(self) -> PartitionScheme:
+        coarse_g, coarse_to_nodes, _ = self._coarsening_graph()
+
+        partitions: dict[int, set[int]] = {p: set() for p in range(self.site_num)}
+        partition_loads: dict[int, float] = {p: 0.0 for p in range(self.site_num)}
+        visited: set[int] = set()
+
+        sorted_nodes = sorted(
+            coarse_g.nodes(),
+            key=lambda n: (float(coarse_g.nodes[n].get('weight', 1.0)), -n),
+            reverse=True
+        )
+
+        # Hottest Tuples Seed: Phân bổ lần lượt các đỉnh nóng nhất vào từng partition ban đầu
+        # tìm ra các đỉnh nóng nhất, chia đều cho các site, tránh tình trạng 1 site quá tải
+        for p in range(min(self.site_num, len(sorted_nodes))):
+            node = sorted_nodes[p]
+            partitions[p].add(node)
+            partition_loads[p] += float(coarse_g.nodes[node].get('weight', 1.0))
+            visited.add(node)
+
+        # Remaining Tuples Allocation: Lần lượt duyệt các đỉnh còn lại theo độ nóng giảm dần, chọn partition tối ưu dựa trên tổng trọng số cạnh kết nối và mức độ cân bằng tải
+        # Ưu tiên xếp đỉnh vào partition có lực liên kết mạnh nhất để tránh việc transaction bị phân tán giữa các partition
+        # Nếu không có liên kết hoặc độ liên kết bằng nhau, thuật toán sẽ chọn partition đang có tổng tải thấp nhất để đảm bảo cân bằng tải theo Equation 1
+        for node in sorted_nodes:
+            if node in visited:
+                continue
+            node_w = float(coarse_g.nodes[node].get('weight', 1.0))
+            best_p = 0
+            best_score = None
+            for p in range(self.site_num):
+                aff = sum(
+                    float(coarse_g[node][nbr].get('weight', 0.0))
+                    for nbr in coarse_g.neighbors(node)
+                    if nbr in partitions[p]
+                )
+                score = (aff, -partition_loads[p])
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_p = p
+            partitions[best_p].add(node)
+            partition_loads[best_p] += node_w 
+            visited.add(node)
+
+        # UncoarseningGraph: Bung các đỉnh gom cụm về lại các đỉnh ban đầu trong đồ thị nhiệt
+        # và gán nhãn partition tương ứng vào self.partition_scheme.partitions
+        final_partitions: dict[int, set[int]] = {p: set() for p in range(self.site_num)}
+        for p, c_nodes in partitions.items():
+            for cn in c_nodes:
+                for orig_node in coarse_to_nodes[cn]:
+                    final_partitions[p].add(orig_node)
+                    self.heat_graph.nodes[orig_node]['partition'] = p
+
+        self.partition_scheme.partitions = final_partitions
         return self.partition_scheme
 
 class Partitioning(): # Algorithm 2
@@ -308,7 +464,7 @@ class Partitioning(): # Algorithm 2
         """
         criticalEdgesLoad = self.getCriticalEdgesLoad(G)
         if criticalEdgesLoad > self.distributed_percentage * sum(loads):
-            G = PartitioningMinimumCutGraph(G, self.site_num).run()
+            G = PartitioningMinimumCutGraph(G, self.workload_factor).run() # algorithm 4
 
         if len(G.partitions) == 1:
             G = FirstPartitioning(G, self.site_num).run()
