@@ -268,6 +268,26 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
 
         return total_weight
 
+    def updateMinCut(self, partition_scheme: PartitionScheme, vertex_groups, origin_partition: int, target_partition: int) -> float:
+        minimal_cut = float("inf")
+        source_vertices = partition_scheme.partitions[origin_partition]
+        for vertices in vertex_groups:
+            vertices = list(vertices)
+            if not set(vertices).issubset(source_vertices):
+                continue
+            trial_scheme = copy.deepcopy(partition_scheme)
+            trial_scheme = self.migrateTuple(trial_scheme, vertices, origin_partition, target_partition)
+
+            # Kiểm tra cân bằng tải của trial_scheme
+            if not self.checkBalance(trial_scheme):
+                continue
+
+            # Nếu hợp lệ, tính tổng trọng số cạnh cắt rồi so sánh với kết quả tốt nhất
+            cut = self.calculateMinimumCut(trial_scheme)
+            minimal_cut = min(cut, minimal_cut)
+
+        return minimal_cut
+
     def explorePossibility(self, partition_scheme: PartitionScheme, vertex: int, origin_partition: int, target_partition: int) -> float:
         """
         Đầu vào:
@@ -300,28 +320,21 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
         if vertex not in source_vertices or origin_partition == target_partition:
             return -1
         """
-        Tính min cho 1 hop
+        Tính min cho 1 đỉnh.
+        """
+        minimal_cut = self.updateMinCut(partition_scheme, [[vertex]], origin_partition, target_partition)
+
+        """
+        Tính min cho 1 hop - 2 đỉnh.
         """
         # Các đỉnh cách vertex đúng 1 cạnh
         one_hop = set(heat_graph.neighbors(vertex)) - {vertex}
-        for neighbor in one_hop:
-            vertices = [vertex, neighbor]
-            if not set(vertices).issubset(source_vertices):
-                continue
-            trial_scheme = copy.deepcopy(partition_scheme)
-            trial_scheme = self.migrateTuple(trial_scheme, vertices, origin_partition, target_partition)
+        one_hop_groups = [[vertex, neighbor] for neighbor in one_hop]
+        cut = self.updateMinCut(partition_scheme, one_hop_groups, origin_partition, target_partition)
+        minimal_cut = min(cut, minimal_cut)
 
-            # Kiểm tra cân bằng tải của trial_scheme
-            if not self.checkBalance(trial_scheme):
-                continue
-
-            # Nếu hợp lệ, tính tổng trọng số cạnh cắt rồi so sánh với kết quả tốt nhất
-            cut = self.calculateMinimumCut(trial_scheme)
-            minimal_cut = min(cut, minimal_cut)
-
-            trial_scheme = copy.deepcopy(partition_scheme)
         """
-        Tính min cho 2 hop
+        Tính min cho 2 hop - 3 đỉnh.
         """
         # Các đỉnh cách vertex đúng 2 cạnh
         two_hops = set()
@@ -329,28 +342,13 @@ class PartitioningMinimumCutGraph(): # Algorithm 4
             for next_neighbor in heat_graph.neighbors(neighbor):
                 if next_neighbor != vertex and next_neighbor not in one_hop:
                     two_hops.add((vertex, neighbor, next_neighbor))
-
-        trial_scheme = copy.deepcopy(partition_scheme)
         # Chuyển các đỉnh trong phương án sang target_partition
-        for partition_group in two_hops:
-            vertices = list(partition_group) # List chứa đỉnh ID.
-            if not set(vertices).issubset(source_vertices):
-                continue
-            trial_scheme = copy.deepcopy(partition_scheme)
-            trial_scheme = self.migrateTuple(trial_scheme, vertices, origin_partition, target_partition)
-
-            # Kiểm tra cân bằng tải của trial_scheme
-            if not self.checkBalance(trial_scheme):
-                continue
-
-            # Nếu hợp lệ, tính tổng trọng số cạnh cắt rồi so sánh với kết quả tốt nhất
-            cut = self.calculateMinimumCut(trial_scheme)
-            minimal_cut = min(cut, minimal_cut)
+        cut = self.updateMinCut(partition_scheme, two_hops, origin_partition, target_partition)
+        minimal_cut = min(cut, minimal_cut)
 
         # Nếu ko có trường hợp nào hợp lệ thì trả về -1
         return -1 if minimal_cut == float("inf") else minimal_cut
 
-    
     def checkMinPartition(self, original_scheme: PartitionScheme, new_scheme: PartitionScheme) -> bool:
         """Kiểm tra phương án mới có giảm tổng trọng số cạnh cắt không. (đây là equation 2)"""
         original_cut = self.calculateMinimumCut(original_scheme)
