@@ -586,6 +586,7 @@ class Partitioning(): # Algorithm 2
         Tổng trọng số weight của tất cả các cạnh nối giữa 2
         partition khác nhau trong Heat Graph.
         """
+        loads = self.getLoads(G)
         criticalEdgesLoad = self.getCriticalEdgesLoad(G)
         if criticalEdgesLoad > self.distributed_percentage * sum(loads):
             G = PartitioningMinimumCutGraph(G, self.workload_factor).run() # algorithm 4
