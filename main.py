@@ -137,9 +137,11 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
         # Giới hạn độ tìm kiếm = 2 bước nhảy.
         return True
 
-    def run(self) -> PartitionScheme:
-        current_scheme = self.partition_scheme
-        G = copy.deepcopy(current_scheme)
+    def run(self, recursion_depth: int = 20) -> PartitionScheme:
+        G = copy.deepcopy(self.partition_scheme)
+
+        if recursion_depth == 0 or not G.partitions:
+            return G
 
         loads = self.getLoads(G)
         # Partition có tổng workload thấp nhất
@@ -173,7 +175,7 @@ class PartitioningUnbalancedGraph(): # Algorithm 3
         overloadedPartition = max(loads, key=loads.__getitem__)
 
         if (loads[overloadedPartition] > (1 + self.workload_factor) * avgWorkload or loads[underloadedPartition] < (1-self.workload_factor) * avgWorkload):
-            G = PartitioningUnbalancedGraph(G, self.site_num, self.workload_factor).run()
+            G = PartitioningUnbalancedGraph(G, self.site_num, self.workload_factor).run(recursion_depth=recursion_depth-1)
 
         return G
 
@@ -570,9 +572,12 @@ class Partitioning(): # Algorithm 2
         )
         return calculator.calculateMinimumCut(partition_scheme)
 
-    def run(self) -> PartitionScheme:
+    def run(self, recursion_depth: int  = 20) -> PartitionScheme:
         current_scheme = self.partition_scheme
         G = copy.deepcopy(current_scheme)
+
+        if recursion_depth == 0:
+            return G
 
         loads = self.getLoads(G)
         minPartition = min(loads)
@@ -595,7 +600,7 @@ class Partitioning(): # Algorithm 2
             G = FirstPartitioning(G, self.site_num).run()
 
         if G.partitions != self.partition_scheme.partitions or len(G.partitions) != self.site_num:
-            G = Partitioning(G, self.site_num, self.workload_factor, self.distributed_percentage).run()
+            G = Partitioning(G, self.site_num, self.workload_factor, self.distributed_percentage).run(recursion_depth=recursion_depth - 1)
 
         return G
 
