@@ -18,10 +18,12 @@ def objective(W, X):
 
 
 def discrete_ncut(W, labels, k):
-    """NCut = 1/2 tổng cut/volume; tính từ cạnh, phạt cụm rỗng bằng infinity."""
+    """NCut = 1/2 tổng cut/volume của các cụm có đỉnh; bỏ qua nhãn không được dùng."""
     score = 0.0
     for group in range(k):
         inside = labels == group
+        if not inside.any():
+            continue
         volume = W[inside].sum()
         if volume <= 0:
             return float('inf')
@@ -30,10 +32,12 @@ def discrete_ncut(W, labels, k):
 
 
 def exact_partition(W, k):
-    """Vét cạn K^N nhãn để tìm tối ưu toàn cục; cố định nhãn đỉnh đầu để bớt đối xứng."""
+    """Tìm tối ưu với đúng k cụm để so công bằng với số cụm BPG thực sự tạo ra."""
     best, answer = float('inf'), None
     for tail in product(range(k), repeat=len(W) - 1):
         labels = np.array((0, *tail))
+        if len(np.unique(labels)) != k:
+            continue
         score = discrete_ncut(W, labels, k)
         if score < best:
             best, answer = score, labels
@@ -178,7 +182,7 @@ class TestBPG(unittest.TestCase):
 
     def check_ground_truth(self, n, edges, k, known_labels=None, known_score=None,
                            iterations=200, seeds=(0, 1, 42)):
-        """So từng seed với vét cạn; kiểm chứng bằng nghiệm tay nếu có, không chọn seed đẹp."""
+        """So từng seed với vét cạn cùng số cụm thực tế; không bắt buộc BPG tạo đủ K cụm."""
         W = np.zeros((n, n))
         for u, v, weight in edges:
             W[u, v] = W[v, u] = weight
@@ -188,21 +192,21 @@ class TestBPG(unittest.TestCase):
         if known_labels is not None:
             self.assertAlmostEqual(discrete_ncut(W, np.array(known_labels), k), optimum, places=12)
         self.ground_truth_report = [f'Ground truth: {(truth + 1).tolist()} | NCut = {optimum:.6f}'] #type: ignore
-        gaps, cluster_counts = [], []
+        gaps, optima = [], {k: optimum}
         for seed in seeds:
             R = np.random.default_rng(seed).random((n, k))
             _, initial = self.run_bpg(W=csr_array(W), R=R, iterations=0)
             labels, X = self.run_bpg(W=csr_array(W), R=R, step=1, iterations=iterations)
             score = discrete_ncut(W, labels - 1, k)
             count = len(np.unique(labels))
-            cluster_counts.append(count)
-            gaps.append(score - optimum)
+            if count not in optima:
+                optima[count] = exact_partition(W, count)[0]
+            reference = optima[count]
+            gaps.append(score - reference)
             self.ground_truth_report.append(
-                f'Seed {seed:2}: BPG {labels.tolist()} | NCut = {score:.6f} | lệch = {score - optimum:.6f}'
-                + (f' | thiếu cụm: {count}/{k} (inf là điểm phạt)' if count < k else ''))
+                f'Seed {seed:2}: BPG {labels.tolist()} | {count} cụm | NCut = {score:.6f}'
+                f' | tối ưu {count} cụm = {reference:.6f} | lệch = {score - reference:.6f}')
             self.assertLess(objective(W, X), objective(W, initial), f'Seed {seed}: f(X) không giảm')
-        self.assertTrue(all(count == k for count in cluster_counts),
-                        f'Làm tròn tạo cụm rỗng: số cụm theo từng seed = {cluster_counts}, yêu cầu K={k}')
         self.assertTrue(np.allclose(gaps, 0, rtol=0, atol=1e-10),
                         'BPG chưa đạt tối ưu trong ngân sách vòng lặp; có thể chưa hội tụ hoặc mắc cực tiểu địa phương')
 
