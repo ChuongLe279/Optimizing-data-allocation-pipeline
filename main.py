@@ -13,7 +13,7 @@ class PartitionScheme():
         self.partitions = partitions
 
 class BregmanProximalGradient(): # BPG
-    def __init__(self, W: csr_array, partitions_num: int, step_size: int, iterations_num: int):
+    def __init__(self, W: csr_array, partitions_num: int, step_size: float, iterations_num: int):
         self.W = W
         self.partitions_num = partitions_num
         self.step_size = step_size
